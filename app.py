@@ -3,51 +3,43 @@ import streamlit as st
 
 st.set_page_config(page_title="Analyse des appels", layout="wide")
 
-st.title("📞 Analyse des appels par groupe de destination")
+st.title("📞 Analyse des appels téléphoniques")
 
-# 📤 Upload CSV
-uploaded_file = st.file_uploader("Choisissez un fichier CSV", type=["csv"])
+# Charger le fichier CSV depuis Google Drive
+@st.cache_data
+def load_data():
+    url = "https://drive.google.com/uc?id=1eJcROCTnoXQ2xCXndT3bdAlQBKn6qL1K"
+    df = pd.read_csv(url)
+    return df
 
-if uploaded_file is not None:
-    df = pd.read_csv(uploaded_file)
+df = load_data()
 
-    st.subheader("Aperçu du fichier")
-    st.dataframe(df.head())
+# Calcul des durées totales et montants totaux par destination
+agg_df = df.groupby("Destination Group").agg({
+    "Duration (Seconds)": "sum",
+    "Amount": "sum"
+}).reset_index()
 
-    # 📊 Groupement par destination avec somme
-    grouped = df.groupby('Destination Group').agg({
-        'Duration (Seconds)': 'sum',
-        'Amount': 'sum'
-    }).reset_index()
+# Formater les colonnes
+agg_df["Duration (Seconds)"] = agg_df["Duration (Seconds)"].astype(int)
+agg_df["Montant (€)"] = agg_df["Amount"].round(2)
+agg_df.drop("Amount", axis=1, inplace=True)
 
-    # 🔝 Top 10 par durée
-    top_10 = grouped.sort_values(by='Duration (Seconds)', ascending=False).head(10)
-    top_10_formatted = top_10.copy()
-    top_10_formatted["Duration (Seconds)"] = top_10_formatted["Duration (Seconds)"].apply(lambda x: "{:,}".format(int(x)))
-    top_10_formatted["Amount"] = top_10_formatted["Amount"].apply(lambda x: "{:,.2f}".format(x))
+# Tableau complet avec ligne de total
+all_dest_df = agg_df.copy()
+total_row = pd.DataFrame({
+    "Destination Group": ["✅ Total général"],
+    "Duration (Seconds)": [all_dest_df["Duration (Seconds)"].sum()],
+    "Montant (€)": [all_dest_df["Montant (€)"].sum()]
+})
+all_dest_df = pd.concat([all_dest_df, total_row], ignore_index=True)
 
-    st.subheader("🔝 Top 10 des groupes de destination par durée cumulée d'appels")
-    st.dataframe(top_10_formatted)
+# Top 10
+top10_df = agg_df.sort_values(by="Duration (Seconds)", ascending=False).head(10)
 
-    # 📋 Toutes les destinations avec total
-    grouped_all_sorted = grouped.sort_values(by='Duration (Seconds)', ascending=False).copy()
-    total_duration = grouped_all_sorted["Duration (Seconds)"].sum()
-    total_amount = grouped_all_sorted["Amount"].sum()
+# Affichage
+st.subheader("🏆 Top 10 des destinations par durée totale d'appels")
+st.dataframe(top10_df.style.format({"Duration (Seconds)": "{:,}".format, "Montant (€)": "{:,.2f} €".format}))
 
-    total_row = pd.DataFrame({
-        "Destination Group": ["Total général"],
-        "Duration (Seconds)": [total_duration],
-        "Amount": [total_amount]
-    })
-
-    grouped_all_with_total = pd.concat([grouped_all_sorted, total_row], ignore_index=True)
-    grouped_all_formatted = grouped_all_with_total.copy()
-    grouped_all_formatted["Duration (Seconds)"] = grouped_all_formatted["Duration (Seconds)"].apply(lambda x: "{:,}".format(int(x)))
-    grouped_all_formatted["Amount"] = grouped_all_formatted["Amount"].apply(lambda x: "{:,.2f}".format(x))
-
-    st.subheader("📋 Toutes les destinations (avec total global)")
-    st.dataframe(grouped_all_formatted)
-
-else:
-    st.info("Veuillez importer un fichier CSV pour lancer l'analyse.")
-
+st.subheader("📋 Toutes les destinations : durée cumulée et montant total")
+st.dataframe(all_dest_df.style.format({"Duration (Seconds)": "{:,}".format, "Montant (€)": "{:,.2f} €".format}))
